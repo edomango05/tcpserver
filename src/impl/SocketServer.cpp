@@ -1,7 +1,11 @@
 #include "../include/SocketServer.hpp"
+#include "../include/Exceptions.hpp"
 #include <arpa/inet.h>
 #include <bits/stdc++.h>
+#include <cstring>
+#include <exception>
 #include <iostream>
+#include <string_view>
 #include <unistd.h>
 
 SocketServer::SocketServer(
@@ -14,8 +18,7 @@ SocketServer::SocketServer(
   m_file_descriptor = ::socket(AF_INET, SOCK_STREAM, 0);
   if (::setsockopt(m_file_descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&opt,
                    sizeof(opt)) < 0) {
-    perror("setsockopt");
-    exit(EXIT_FAILURE);
+    THROW_EXCEPTION_ERRNO;
   }
 }
 
@@ -26,18 +29,15 @@ void SocketServer::listen(const char *host, uint16_t port) {
   if (::bind(m_file_descriptor,
              reinterpret_cast<const struct sockaddr *>(&m_address),
              sizeof(m_address)) < 0) {
-    std::cout << "bind error" << std::endl;
-    return;
+    
+    THROW_EXCEPTION_ERRNO;
   }
   if (::listen(m_file_descriptor, SOMAXCONN) < 0) {
-    std::cout << "listen error" << std::endl;
-    return;
+    THROW_EXCEPTION_ERRNO;
   }
-
   m_address_size = sizeof(m_address);
   loop();
 }
-
 void SocketServer::disconnect() { close(m_file_descriptor); }
 
 void SocketServer::broadcast(const char *buff) {
