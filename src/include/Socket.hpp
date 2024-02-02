@@ -13,7 +13,9 @@ protected:
   unsigned long m_address_size;
 
 public:
-  Socket(){};
+  Socket(){
+    m_address_size = sizeof(m_address);
+  };
   FileDescriptor get_descriptor() const
   {
     return m_file_descriptor;
