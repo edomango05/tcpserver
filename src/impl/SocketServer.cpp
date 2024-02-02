@@ -1,0 +1,113 @@
+#include "../include/SocketServer.hpp"
+#include <arpa/inet.h>
+#include <iostream>
+#include <unistd.h>
+#include <bits/stdc++.h> 
+
+SocketServer::SocketServer(uint _max_sockets_connected, std::function<void(char[4096])> _on_data)
+{
+  int opt = 1;
+  m_max_sockets_connected = _max_sockets_connected;
+  m_on_data = _on_data;
+  connected_client_sockets = std::vector<SocketClient>(m_max_sockets_connected);
+  m_file_descriptor = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (::setsockopt(m_file_descriptor, SOL_SOCKET, SO_REUSEADDR, (char *)&opt, sizeof(opt)) < 0)
+  {
+    perror("setsockopt");
+    exit(EXIT_FAILURE);
+  }
+}
+
+void SocketServer::listen(const char *host, uint16_t port)
+{
+  inet_pton(AF_INET, host, &m_address.sin_addr);
+  m_address.sin_family = AF_INET;
+  m_address.sin_port = htons(port);
+
+  if (::bind(m_file_descriptor, reinterpret_cast<const struct sockaddr *>(&m_address), sizeof(m_address)) < 0)
+  {
+    std::cout << "bind error" << std::endl;
+    return;
+  }
+  if (::listen(m_file_descriptor, SOMAXCONN) < 0)
+  {
+    std::cout << "listen error" << std::endl;
+    return;
+  }
+
+  m_address_size = sizeof(m_address);
+  loop();
+}
+
+void SocketServer::loop()
+{
+  struct timeval tv;
+  tv.tv_sec = 2;
+  tv.tv_usec = 0;
+  int result;
+
+  while (true)
+  {
+    FD_ZERO(&m_readfds);
+    FD_SET(m_file_descriptor, &m_readfds);
+    m_max_fd = m_file_descriptor;
+    for (SocketClient& client : connected_client_sockets)
+    {
+      FileDescriptor fd = client.get_descriptor();
+      if (fd > 0)
+      {
+        FD_SET(fd, &m_readfds);
+      }
+      if (fd > m_max_fd)
+      {
+        m_max_fd = fd;
+      }
+    }
+
+    if ((result = ::select(m_max_fd + 1, &m_readfds, NULL, NULL, &tv)) < 0)
+    {
+      std::cout << "Select error occured" << std::endl;
+    }
+
+    if (FD_ISSET(m_file_descriptor, &m_readfds))
+    {
+      for (SocketClient& client : connected_client_sockets)
+      {
+        if (client.get_descriptor() == 0)
+        {
+          client.set_descriptor(
+              ::accept(
+                m_file_descriptor,
+                reinterpret_cast<sockaddr *>(&client.get_address_ref()), 
+                reinterpret_cast<socklen_t *>(&client.get_address_size_ref())
+              )
+          );
+          std::cout << "Host connected " << client.get_descriptor() << std::endl;
+          break;
+        }
+      }
+    }
+    for (SocketClient& client : connected_client_sockets)
+    {
+      auto sd = client.get_descriptor();
+      if (sd != 0 && FD_ISSET(sd, &m_readfds))
+      {
+        memset(m_buffer, 0, 4096);
+        ssize_t valread;
+        if ((valread = read(sd, m_buffer, 4096)) == 0)
+        {
+          std::cout << "Host disconnected" << std::endl;
+          client.disconnect();
+        }
+        else if (valread == -1)
+        {
+        }
+        else
+        {
+          // Somebody sent some data
+          m_on_data(m_buffer);
+        }
+      }
+    }
+  }
+}

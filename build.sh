@@ -1,0 +1,1 @@
+g++ -g -std=c++23 -I./src/include -pedantic-errors -Wall -Wextra ./src/main.cpp ./src/impl/*.cpp -o a.out
